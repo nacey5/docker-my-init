@@ -5,6 +5,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -166,8 +167,121 @@ func setUpMount() {
 	syscall.Mount("tmpfs", "/dev", "tmpfs", syscall.MS_NOSUID|syscall.MS_STRICTATIME, "mode=75")
 }
 
-func NewWorkSpace(rootURL string, mntURL string) {
+func NewWorkSpace(rootURL string, mntURL string, volume string) {
 	CreateReadOnlyLayer(rootURL)
 	CreateWriteLayer(rootURL)
 	CreateMountPoint(rootURL, mntURL)
+	if volume != "" {
+		//analytic the volume
+		volumeURLS := volumeUrlExtract(volume)
+		length := len(volumeURLS)
+		if length == 2 && volumeURLS[0] != "" && volumeURLS[1] != "" {
+			//mount the data volume
+			MountVolume(rootURL, mntURL, volumeURLS)
+			log.Infof("%q", volumeURLS)
+		} else {
+			log.Infof("Volume parameter input is not correct.")
+		}
+	}
+}
+
+func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
+	//create host flooder
+	parentUrl := volumeURLs[0]
+	if err := os.Mkdir(parentUrl, 0777); err != nil {
+		log.Infof("Mkdir parent dir %s error. %v", parentUrl, err)
+	}
+	//mount the point into the volume flooder
+	containeerUrl := volumeURLs[1]
+	containeerVolumeURL := mntURL + containeerUrl
+	if err := os.Mkdir(containeerVolumeURL, 0777); err != nil {
+		log.Infof("Mkdir container dir %s error. %v", containeerUrl, err)
+	}
+	//put the host mount the volume
+	dirs := "dirs=" + parentUrl
+	cmd := exec.Command("mount", "-t", "aufs", "-o", dirs, "none", containeerVolumeURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Errorf("Mount volume failed %v.", err)
+	}
+}
+
+// analytic the volume's string
+func volumeUrlExtract(volume string) []string {
+	var volumeURLs []string
+	volumeURLs = strings.Split(volume, ":")
+	return volumeURLs
+}
+
+// to busybox.tar unzip to the file busybox,and the container as the readonly layer
+func CreateReadOnlyLayer(rootURL string) {
+	busyboxURL := rootURL + "busybox/"
+	busyboxTarURL := rootURL + "busybox.tar"
+	exist, err := PathExists(busyboxURL)
+	if err != nil {
+		log.Infof("Fail to judge whether dir %s exist. %v", busyboxURL, err)
+	}
+	if !exist {
+		if err := os.Mkdir(busyboxTarURL, 0777); err != nil {
+			log.Infof("Mkdir dir %s error. %v", busyboxURL, err)
+		}
+		if _, err := exec.Command("tar", "-xvf", busyboxTarURL, "-C", busyboxURL).CombinedOutput(); err != nil {
+			log.Errorf("unTar dir %s error %v", busyboxTarURL, err)
+		}
+	}
+}
+
+// create the writelayer as the container's only layer
+func CreateWriteLayer(rootURL string) {
+	writeURL := rootURL + "writeLayer/"
+	if err := os.Mkdir(writeURL, 0777); err != nil {
+		log.Errorf("Mkdir dir %s error. %v", writeURL, err)
+	}
+}
+
+func CreateMountPoint(rootURL string, mntURL string) {
+	//create the file mnt as the mount point
+	if err := os.Mkdir(mntURL, 0777); err != nil {
+		log.Error("Mkdir dir %s error. %v", mntURL, err)
+	}
+	//put the writeLayer and busybo file and the mount to the mnt
+	dirs := "dirs=" + rootURL + "writeLayer:" + rootURL + "busybox"
+	cmd := exec.Command("mount", "-t", "aufs", "-o", dirs, "none", mntURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Errorf("%v", err)
+	}
+}
+
+// judge the path is exists or not
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err != nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func DeleteMountPoint(rootURL string, mntURL string) {
+	cmd := exec.Command("umount", mntURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Errorf("%v", err)
+	}
+	if err := os.RemoveAll(mntURL); err != nil {
+		log.Errorf("Remove dir %s error %v", mntURL, err)
+	}
+}
+
+func DeleteWriteLayer(rootURL string) {
+	writeURL := rootURL + "writeLayer/"
+	if err := os.RemoveAll(writeURL); err != nil {
+		log.Errorf("Remove dir %s error %v", writeURL, err)
+	}
 }

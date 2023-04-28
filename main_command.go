@@ -16,14 +16,23 @@ var runCommand = cli.Command{
 			Name:  "ti",
 			Usage: "enable tty",
 		},
+		cli.StringFlag{
+			Name:  "v",
+			Usage: "volume",
+		},
 	},
 	Action: func(context *cli.Context) error {
 		if len(context.Args()) < 1 {
 			return fmt.Errorf("missing container command")
 		}
-		cmd := context.Args().Get(0)
+		var cmdArray []string
+		for _, arg := range context.Args() {
+			cmdArray = append(cmdArray, arg)
+		}
 		tty := context.Bool("ti")
-		Run(tty, cmd)
+		// put the volume's param to the Run method
+		volume := context.String("v")
+		Run(tty, cmdArray, volume)
 		return nil
 	},
 }
@@ -40,13 +49,19 @@ var initCommand = cli.Command{
 	},
 }
 
-
-
-func Run(tty bool,command string)  {
-	parent := container.NewParentProcess(tty, command)
-	if err := parent.Start();err!=nil{
+func Run(tty bool, comArray []string, volume string) {
+	parent, writePipe := container.NewParentProcess(tty, volume)
+	if parent == nil {
+		log.Errorf("New parent process error")
+		return
+	}
+	if err := parent.Start(); err != nil {
 		log.Error(err)
 	}
+	sendInitCommand(comArray, writePipe)
 	parent.Wait()
-	os.Exit(-1)
+	mntURL := "/root/mnt"
+	rootURL := "/root"
+	container.DeleteWorkSpace(rootURL, mntURL, volume)
+	os.Exit(0)
 }
