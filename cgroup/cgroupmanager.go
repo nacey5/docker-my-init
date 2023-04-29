@@ -2,7 +2,6 @@ package cgroup
 
 import (
 	"docker-my/cgroup/subsystem"
-	"docker-my/container"
 	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
@@ -42,29 +41,6 @@ func (c *CgroupManager) Destroy() error {
 		}
 	}
 	return nil
-}
-
-func Run(tty bool, comArray []string, res *subsystem.ResourceConfig) {
-	parent, writePipe := container.NewParentProcess(tty)
-	if parent == nil {
-		logrus.Errorf("New parent process error")
-		return
-	}
-	if err := parent.Start(); err != nil {
-		logrus.Error(err)
-	}
-	//use docker-cgroup as cgroup name
-	//create cgroupmanager,and use the apply and set for the resource limit
-	cgroupManager := NewCGroupManager("mydocker-cgroup")
-	defer cgroupManager.Destroy()
-	//set the resource limit
-	cgroupManager.Set(res)
-	//add the docker process to the cgroup
-	cgroupManager.Apply(parent.Process.Pid)
-	//init the docker
-	sendInitCommand(comArray, writePipe)
-
-	parent.Wait()
 }
 
 func sendInitCommand(comArray []string, writePipe *os.File) {

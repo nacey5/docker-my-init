@@ -15,6 +15,9 @@ func main() {
 	app.Commands = []cli.Command{
 		initCommand,
 		runCommand,
+		commitCommand,
+		listCommand,
+		logCommmand,
 	}
 	app.Before = func(context *cli.Context) error {
 		//Log as Json instant of the default ASCII formatter

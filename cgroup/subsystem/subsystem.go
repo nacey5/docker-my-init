@@ -2,6 +2,7 @@ package subsystem
 
 import (
 	"bufio"
+	"docker-my/container"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"os"
@@ -167,22 +168,26 @@ func setUpMount() {
 	syscall.Mount("tmpfs", "/dev", "tmpfs", syscall.MS_NOSUID|syscall.MS_STRICTATIME, "mode=75")
 }
 
-func NewWorkSpace(rootURL string, mntURL string, volume string) {
-	CreateReadOnlyLayer(rootURL)
-	CreateWriteLayer(rootURL)
-	CreateMountPoint(rootURL, mntURL)
+func NewWorkSpace(volume, imageName, containerName string) {
+	CreateReadOnlyLayer(container.RootUrl)
+	CreateWriteLayer(container.RootUrl)
+	CreateMountPoint(container.RootUrl, container.MntUrl)
+	CreateReadOnlyLayer(imageName)
+	CreateWriteLayer(containerName)
+	CreateMountPoint(containerName, imageName)
 	if volume != "" {
 		//analytic the volume
 		volumeURLS := volumeUrlExtract(volume)
 		length := len(volumeURLS)
 		if length == 2 && volumeURLS[0] != "" && volumeURLS[1] != "" {
 			//mount the data volume
-			MountVolume(rootURL, mntURL, volumeURLS)
+			MountVolume(container.RootUrl, container.MntUrl, volumeURLS)
 			log.Infof("%q", volumeURLS)
 		} else {
 			log.Infof("Volume parameter input is not correct.")
 		}
 	}
+	MountVolume(container.RootUrl, container.MntUrl, volume)
 }
 
 func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
